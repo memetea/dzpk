@@ -5,6 +5,7 @@ import (
 	"sync"
 )
 
+//it's just a game
 const (
 	MAX_GROUP_PLAYER int = 10
 )
