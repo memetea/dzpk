@@ -52,3 +52,50 @@ func TestSortCards(t *testing.T) {
 	sort.Sort(SortByFaceAndValue(arr))
 	t.Logf("%v", arr)
 }
+
+func TestSelectCards(t *testing.T) {
+	hands := [][]string{
+		//[]string{"SA", "SK", "SQ", "S10", "SJ", "H8", "D2"},
+		//[]string{"S7", "S9", "SJ", "S8", "S10", "H2", "D5"},
+		[]string{"SA", "SJ", "HA", "C3", "CA", "D2", "DA"},
+		//[]string{"S3", "C3", "HQ", "CQ", "C9", "SQ", "D8"},
+	}
+
+	expectFace := []CardFaceType{
+		//RoyalFlush,
+		//StraightFlush,
+		FourOfAKind,
+		//FullHouse,
+	}
+
+	expectVal := [][]string{
+		//[]string{"S10", "SJ", "SQ", "SK", "SA"},
+		//[]string{"S7", "S8", "S9", "S10", "SJ"},
+		[]string{"SA", "HA", "CA", "DA", "SJ"},
+		//[]string{"SQ", "HQ", "CQ", "S3", "C3"},
+	}
+
+	for i, h := range hands {
+		var cards []*Card
+		for _, c := range h {
+			card, err := parseCard(c)
+			if err != nil {
+				t.Errorf("parseCard err:%v", err)
+				t.FailNow()
+			}
+			cards = append(cards, card)
+		}
+		collection := SelectTop5(cards)
+		if collection.FaceType != expectFace[i] {
+			t.Errorf("Expect face of %v is %v, got %v", h, expectFace[i], collection.FaceType)
+			t.FailNow()
+		}
+
+		for j, v := range collection.TopCards {
+			if v.String() != expectVal[i][j] {
+				t.Errorf("Expect val of %v is %s. got %v", h, expectVal[i], collection.TopCards)
+				t.FailNow()
+			}
+		}
+	}
+}
