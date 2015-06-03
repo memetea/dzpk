@@ -74,18 +74,18 @@ func (g *Game) acceptClient(name string, conn net.Conn) bool {
 //新的一局游戏开始， 每人发两张牌
 func (g *Game) onGameStart() {
 	g.ShuffledCards = genRandCards()
-	for i := 0; i < 2; i++ {
-		for i := 0; i < len(g.Players); i++ {
-			p := g.Players[(g.Dealer+i)%len(g.Players)]
-			c := g.ShuffledCards[0]
-			g.ShuffledCards = g.ShuffledCards[1:]
-			err := p.SendCard(c)
-			if err != nil {
-				syslog.Error("Sendcard err:%v", err)
-				continue
-			}
+	for i := 0; i < len(g.Players); i++ {
+		p := g.Players[(g.Dealer+i)%len(g.Players)]
+		var holecards []*Card
+		holecards = append(holecards, g.ShuffledCards[i])
+		holecards = append(holecards, g.ShuffledCards[i+len(g.Players)])
+		err := p.SendHoleCard(holecards)
+		if err != nil {
+			syslog.Error("Sendcard err:%v", err)
+			continue
 		}
 	}
+	g.ShuffledCards = g.ShuffledCards[2*len(g.Players):]
 }
 
 func (g *Game) onGameOver() {
@@ -95,15 +95,15 @@ func (g *Game) onGameOver() {
 //发三张公共牌
 func (g *Game) onFlop() {
 	for _, p := range g.Players {
-		p.SendCommCard(g.ShuffledCards[0])
+		p.SendCommCard(g.ShuffledCards[0:3])
 	}
-	g.ShuffledCards = g.ShuffledCards[1:]
+	g.ShuffledCards = g.ShuffledCards[3:]
 }
 
 //发第四张公共牌
 func (g *Game) onTurn() {
 	for _, p := range g.Players {
-		p.SendCommCard(g.ShuffledCards[0])
+		p.SendCommCard(g.ShuffledCards[0:1])
 	}
 	g.ShuffledCards = g.ShuffledCards[1:]
 }
@@ -111,7 +111,7 @@ func (g *Game) onTurn() {
 //发第五张公共牌
 func (g *Game) onRiver() {
 	for _, p := range g.Players {
-		p.SendCommCard(g.ShuffledCards[0])
+		p.SendCommCard(g.ShuffledCards[0:1])
 	}
 	g.ShuffledCards = g.ShuffledCards[1:]
 }
