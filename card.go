@@ -43,8 +43,8 @@ type Card struct {
 	Value CardValue
 }
 
+//n must be in [1, 52]
 func newCard(n int) (*Card, error) {
-	//n must be in [1, 52]
 	if n < 0 || n > 52 {
 		return nil, errors.New("Invalid n to newCard")
 	}
@@ -131,9 +131,9 @@ func (c *Card) String() string {
 	return ""
 }
 
+//gen 52 cards that permutated randomly
 func genRandCards() []*Card {
 	var cards []*Card
-	//gen 52 cards randomly. cards span [0, 52]
 	rand.Seed(time.Now().UnixNano())
 	for _, n := range rand.Perm(13 * 4) {
 		c, err := newCard(n + 1)
@@ -189,14 +189,25 @@ func (ct CardFaceType) String() string {
 	}
 }
 
+//sort cards by face and then by their value secondarily
+//notice: Ace is the largest one among the same face cards
 type SortByFaceAndValue []*Card
 
 func (a SortByFaceAndValue) Len() int      { return len(a) }
 func (a SortByFaceAndValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a SortByFaceAndValue) Less(i, j int) bool {
-	return int(a[i].Face*13)+int(a[i].Value) < int(a[j].Face*13)+int(a[j].Value)
+	v1, v2 := a[i].Value, a[j].Value
+	if v1 == 1 {
+		v1 = 14
+	}
+	if v2 == 1 {
+		v2 = 14
+	}
+	return int(a[i].Face*13)+int(v1) < int(a[j].Face*13)+int(v2)
 }
 
+//sort cards by there value and then by their face secondarily
+//notice: Ace is the largest card
 type SortByValue []*Card
 
 func (a SortByValue) Len() int      { return len(a) }
@@ -205,7 +216,14 @@ func (a SortByValue) Less(i, j int) bool {
 	if a[i].Value == a[j].Value {
 		return a[i].Face < a[j].Face
 	} else {
-		return a[i].Value < a[j].Value
+		v1, v2 := a[i].Value, a[j].Value
+		if v1 == 1 {
+			v1 = 14
+		}
+		if v2 == 1 {
+			v2 = 14
+		}
+		return v1 < v2
 	}
 }
 
@@ -215,10 +233,27 @@ type CardCollection struct {
 }
 
 func (cc *CardCollection) CmpTo(bb *CardCollection) int {
+	if cc.FaceType != bb.FaceType {
+		if cc.FaceType > bb.FaceType {
+			return 1
+		} else {
+			return -1
+		}
+	}
+	for i, j := 0, 0; i < len(cc.TopCards) && j < len(bb.TopCards); i, j = i+1, j+1 {
+		if cc.TopCards[i].Value != bb.TopCards[j].Value {
+			if cc.TopCards[i].Value > bb.TopCards[j].Value {
+				return 1
+			} else {
+				return -1
+			}
+		}
+	}
 
 	return 0
 }
 
+//insert cards at index i.
 func (cc *CardCollection) insertTopCardsAt(i int, cards ...*Card) {
 	for k, j := len(cc.TopCards)-i-len(cards), len(cc.TopCards)-1; k > 0 && j >= 0; k, j = k-1, j-1 {
 		cc.TopCards[j] = cc.TopCards[i+k-1]
@@ -228,30 +263,22 @@ func (cc *CardCollection) insertTopCardsAt(i int, cards ...*Card) {
 	}
 }
 
+//pick straight from a sorted cards collection
+//returns a straight or empty slice
+//notice: Ace 2 3 4 5 is also a straight. it's the smallest one.
 func getTopStraight(cards []*Card) []*Card {
 	var straight []*Card
-	var faceType = CardFaceNone
-	var straightTop CardValue
-	for i := 4; i < len(cards); i++ {
-		if cards[i].Value-cards[i-4].Value == 4 && cards[i].Value-cards[i-3].Value == 3 && cards[i].Value-cards[i-2].Value == 2 && cards[i].Value-cards[i-1].Value == 1 {
-			faceType = Straight
-			straightTop = cards[i].Value
-		} else if cards[i].Value == 13 && cards[i].Value-cards[i-3].Value == (13-10) && cards[i].Value-cards[i-2].Value == (13-11) && cards[i].Value-cards[i-1].Value == (13-12) && cards[0].Value == 1 {
-			//10, J, Q, K, A
-			faceType = Straight
-			straightTop = 1
-		}
-
-		if faceType == Straight {
-			if straightTop == 1 {
-				straight = append(straight, cards[i-3:i+1]...)
-				straight = append(straight, cards[0])
-			} else {
-				straight = append(straight, cards[i-4:i+1]...)
+	for i := 0; i < len(cards)-4; i++ {
+		if cards[i+3].Value-cards[i].Value == 3 && cards[i+2].Value-cards[i].Value == 2 && cards[i+1].Value-cards[i].Value == 1 {
+			if cards[i+4].Value-cards[i].Value == 4 || cards[i+4].Value-cards[i].Value == (1-10) {
+				straight = append([]*Card(nil), cards[i:i+5]...)
+			} else if cards[len(cards)-1].Value == 1 && cards[i].Value == 2 {
+				straight = append([]*Card(nil), cards[len(cards)-1])
+				straight = append(straight, cards[i:i+4]...)
 			}
-			break
 		}
 	}
+
 	return straight
 }
 
@@ -260,7 +287,7 @@ func SelectTop5(cards []*Card) *CardCollection {
 		FaceType: HighCard,
 	}
 
-	//检查是否有顺子
+	//check if straight exists
 	sort.Sort(SortByValue(cards))
 	straight := getTopStraight(cards)
 	if len(straight) == 5 {
@@ -296,34 +323,13 @@ func SelectTop5(cards []*Card) *CardCollection {
 			}
 			if cc.FaceType < Pair {
 				cc.FaceType = Pair
-				cc.insertTopCardsAt(1, cards[i])
-			}
-		} else if cc.FaceType == HighCard {
-			cc.insertTopCardsAt(0, cards[i])
-		}
-	}
-
-	//pad pos left
-	for i := 0; i < len(cc.TopCards); i++ {
-		if cc.TopCards[i] != nil {
-			continue
-		}
-		for j := len(cards) - 1; j >= 0; j-- {
-			included := false
-			for k := len(cc.TopCards) - 1; k >= 0; k-- {
-				if cc.TopCards[k] == cards[j] {
-					included = true
-					break
-				}
-			}
-			if !included {
-				cc.TopCards[i] = cards[j]
-				break
+				cc.insertTopCardsAt(0, cards[i-1:i+1]...)
 			}
 		}
 	}
 
-	//检查是否有同花
+	//beacuse we sort cards by their value previously.
+	//so we need check if there'are flush straight or flush exists next
 FLUSHCHECK:
 	for k, v := range faceCounter {
 		if v >= 5 {
@@ -351,6 +357,25 @@ FLUSHCHECK:
 		}
 	}
 
-	//syslog.Debug("cc.TopCards:%v", cc.TopCards)
+	//pad nil pos
+	for i := 0; i < len(cc.TopCards); i++ {
+		if cc.TopCards[i] != nil {
+			continue
+		}
+		for j := len(cards) - 1; j >= 0; j-- {
+			included := false
+			for k := len(cc.TopCards) - 1; k >= 0; k-- {
+				if cc.TopCards[k] == cards[j] {
+					included = true
+					break
+				}
+			}
+			if !included {
+				cc.TopCards[i] = cards[j]
+				break
+			}
+		}
+	}
+
 	return cc
 }
