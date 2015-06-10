@@ -1,16 +1,13 @@
 package dzpk
 
+//cards operation.
 import (
-	"errors"
 	"fmt"
-	"math"
 	"math/rand"
-	"sort"
 	"strconv"
 	"time"
 )
 
-//花色
 type CardFace int
 
 const (
@@ -20,56 +17,138 @@ const (
 	Diamond CardFace = 3
 )
 
-//CardValue ranges from 1 to 13
-type CardValue int
+//牌型
+type CardFaceType int
 
-func (cv CardValue) String() string {
-	switch cv {
+const (
+	//RoyalFlush    CardFaceType = 9 //皇家同花顺
+	StraightFlush CardFaceType = 8 //同花顺
+	FourOfAKind   CardFaceType = 7 //四条
+	FullHouse     CardFaceType = 6 //葫芦
+	Flush         CardFaceType = 5 //同花
+	Straight      CardFaceType = 4 //顺子
+	ThreeOfAKind  CardFaceType = 3 //三条
+	TwoPairs      CardFaceType = 2 //两队
+	Pair          CardFaceType = 1 //一对
+	HighCard      CardFaceType = 0 //高牌
+	CardFaceNone  CardFaceType = -1
+)
+
+// card face type percent(based on emulated calc):
+// 0 percent: 0.174064
+// 1 percent: 0.403919
+// 2 percent: 0.269111
+// 3 percent: 0.044540
+// 4 percent: 0.046323
+// 5 percent: 0.030246
+// 6 percent: 0.029808
+// 7 percent: 0.001676
+// 8 percent: 0.000313
+
+// [1, 52].
+type Card uint32
+
+func (c Card) Face() CardFace {
+	return CardFace((c - 1) / 13)
+}
+func (c Card) Value() uint32 {
+	return uint32(c) - uint32(c.Face()*13)
+}
+func (c Card) String() string {
+	var v string
+	switch c.Value() {
 	case 1:
-		return "A"
+		v = "A"
 	case 11:
-		return "J"
+		v = "J"
 	case 12:
-		return "Q"
+		v = "Q"
 	case 13:
-		return "K"
+		v = "K"
 	default:
-		return strconv.Itoa(int(cv))
+		v = strconv.Itoa(int(c.Value()))
+	}
+
+	switch c.Face() {
+	case Spade:
+		return "S" + v
+	case Hearts:
+		return "H" + v
+	case Clubs:
+		return "C" + v
+	case Diamond:
+		return "D" + v
+	}
+
+	return ""
+}
+
+//represents a collection of cards in 64 bits
+//Spade     [A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K] at bit [63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51]
+//Hearts    [A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K] at bit [47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35]
+//Clubs     [A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K] at bit [31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19]
+//Diamond   [A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K] at bit [15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4, 3]
+type CardCollection uint64
+
+// var bitsMap [52]uint = [52]uint{
+// 	63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51,
+// 	47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35,
+// 	31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19,
+// 	15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3}
+
+var bitsMap [52]uint = [52]uint{
+	61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
+	45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
+	29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+	13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
+}
+
+func (cc *CardCollection) SetCard(c Card) {
+	*cc = (*cc) | (0x01 << bitsMap[int(c-1)])
+	if c.Value() == 1 {
+		*cc = *cc | (0x01 << uint(3-c.Face()) * 16)
 	}
 }
 
-type Card struct {
-	Face  CardFace
-	Value CardValue
+func (cc *CardCollection) CardExists(c Card) bool {
+	return ((*cc) & (0x01 << bitsMap[int(c-1)])) != 0
 }
 
-//n must be in [1, 52]
-func newCard(n int) (*Card, error) {
-	if n < 0 || n > 52 {
-		return nil, errors.New("Invalid n to newCard")
+func NewCardCollection(cc []Card) CardCollection {
+	var cardcc CardCollection
+	for _, p := range cc {
+		cardcc.SetCard(p)
 	}
-
-	v := n % 13
-	if v == 0 {
-		v = 13
-	}
-	switch math.Ceil(float64(n) / 13.0) {
-	case 4:
-		return &Card{Diamond, CardValue(v)}, nil
-	case 3:
-		return &Card{Clubs, CardValue(v)}, nil
-	case 2:
-		return &Card{Hearts, CardValue(v)}, nil
-	case 1:
-		return &Card{Spade, CardValue(v)}, nil
-	}
-
-	return nil, fmt.Errorf("someting goning wrong if you see this error: n=%d", n)
+	return cardcc
 }
 
-func parseCard(card string) (*Card, error) {
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+func genNCards(n int) []Card {
+	//rand.Seed(time.Now().UnixNano())
+	var cards []Card
+	for len(cards) < n {
+		// random card in [0, 52)
+		c := Card(rand.Int31n(52) + 1)
+		conflict := false
+		for _, v := range cards {
+			if v == c {
+				conflict = true
+				break
+			}
+		}
+		if !conflict {
+			cards = append(cards, c)
+		}
+	}
+	return cards
+}
+
+func parseCard(card string) (Card, error) {
 	if len(card) < 2 {
-		return nil, fmt.Errorf("invalid card representation:%s", card)
+		return Card(0), fmt.Errorf("invalid card representation:%s", card)
 	}
 
 	var face CardFace
@@ -96,286 +175,292 @@ func parseCard(card string) (*Card, error) {
 		case 'A':
 			v = 1
 		default:
-			return nil, fmt.Errorf("invalid card representation:%s", card)
+			return Card(0), fmt.Errorf("invalid card representation:%s", card)
 		}
 	}
 
-	return &Card{face, CardValue(v)}, nil
-
+	return Card(int(face)*13 + v), nil
 }
 
-func newCards(cc ...int) ([]*Card, error) {
-	var cards []*Card
-	for _, v := range cc {
-		c, err := newCard(v)
-		if err != nil {
-			return nil, err
+type CardsCheck struct {
+	face     CardFaceType
+	s        uint16    // 用于判断顺子. 如果存在同花顺， 保存同花顺最小的牌.
+	s4       [4]uint16 // 用于判断同花顺
+	kinds    [14]byte  // 相同大小牌的计数
+	flushs   [4]byte   // 相同花色的计数
+	topCards []Card    // 最大的5张牌
+}
+
+func NewCardsCheck(cc []Card) *CardsCheck {
+	ck := &CardsCheck{face: CardFaceNone}
+
+	for _, c := range cc {
+		f, v := c.Face(), c.Value()
+		ck.flushs[f]++
+		ck.kinds[v-1]++
+		ck.s4[f] = ck.s4[f] | (0x01 << uint(14-v))
+	}
+	ck.kinds[13] = ck.kinds[0]
+	ck.s = ck.s4[0] | ck.s4[1] | ck.s4[2] | ck.s4[3]
+
+	return ck
+}
+
+func NewCardsCheckFromCC(cc CardCollection) *CardsCheck {
+	ck := &CardsCheck{face: CardFaceNone}
+
+	ck.s4 = [4]uint16{
+		uint16(cc >> 48),
+		uint16(cc >> 32),
+		uint16(cc >> 16),
+		uint16(cc),
+	}
+	ck.s = ck.s4[0] | ck.s4[1] | ck.s4[2] | ck.s4[3]
+
+	for i, p := range ck.s4 {
+		for j := uint(1); j < 14; j++ {
+			if (p>>j)&0x01 == 0x01 {
+				ck.kinds[13-j] += 1
+				ck.flushs[i] += 1
+			}
 		}
-		cards = append(cards, c)
-	}
-	return cards, nil
-}
-
-func (c *Card) String() string {
-	switch c.Face {
-	case Spade:
-		return "S" + c.Value.String()
-	case Hearts:
-		return "H" + c.Value.String()
-	case Clubs:
-		return "C" + c.Value.String()
-	case Diamond:
-		return "D" + c.Value.String()
 	}
 
-	return ""
+	return ck
 }
 
-//gen 52 cards that permutated randomly
-func genRandCards() []*Card {
-	var cards []*Card
-	rand.Seed(time.Now().UnixNano())
-	for _, n := range rand.Perm(13 * 4) {
-		c, err := newCard(n + 1)
-		if err != nil {
-			panic(err)
+func (ck *CardsCheck) CardFace() CardFaceType {
+	if ck.face != CardFaceNone {
+		return ck.face
+	}
+
+	var hasStraight bool
+	//check straight flush
+	n, val := uint16(10), uint16(0)
+	for n >= 1 {
+		for i := 0; i < len(ck.s4); i++ {
+			c := ck.s4[i] >> uint(10-n)
+			if c&0x1f == 0x1f && n > val {
+				ck.face = StraightFlush
+				ck.s = n + uint16(i*13) //ck.s remember the position of base of straight flush
+				return ck.face
+			}
 		}
-		cards = append(cards, c)
-	}
-	return cards
-}
 
-//牌型
-type CardFaceType int
-
-const (
-	RoyalFlush    CardFaceType = 9 //皇家同花顺
-	StraightFlush CardFaceType = 8 //同花顺
-	FourOfAKind   CardFaceType = 7 //四条
-	FullHouse     CardFaceType = 6 //葫芦
-	Flush         CardFaceType = 5 //同花
-	Straight      CardFaceType = 4 //顺子
-	ThreeOfAKind  CardFaceType = 3 //三条
-	TwoPairs      CardFaceType = 2 //两队
-	Pair          CardFaceType = 1 //一对
-	HighCard      CardFaceType = 0 //高牌
-	CardFaceNone  CardFaceType = -1
-)
-
-func (ct CardFaceType) String() string {
-	switch ct {
-	case RoyalFlush:
-		return "RoyalFlush"
-	case StraightFlush:
-		return "StraightFlush"
-	case FourOfAKind:
-		return "FourOfAKind"
-	case FullHouse:
-		return "FullHouse"
-	case Flush:
-		return "Flush"
-	case Straight:
-		return "Straight"
-	case ThreeOfAKind:
-		return "ThreeOfAKind"
-	case TwoPairs:
-		return "TwoPairs"
-	case Pair:
-		return "Pair"
-	case HighCard:
-		return "HighCard"
-	default:
-		return "-"
-	}
-}
-
-//sort cards by face and then by their value secondarily
-//notice: Ace is the largest one among the same face cards
-type SortByFaceAndValue []*Card
-
-func (a SortByFaceAndValue) Len() int      { return len(a) }
-func (a SortByFaceAndValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a SortByFaceAndValue) Less(i, j int) bool {
-	v1, v2 := a[i].Value, a[j].Value
-	if v1 == 1 {
-		v1 = 14
-	}
-	if v2 == 1 {
-		v2 = 14
-	}
-	return int(a[i].Face*13)+int(v1) < int(a[j].Face*13)+int(v2)
-}
-
-//sort cards by there value and then by their face secondarily
-//notice: Ace is the largest card
-type SortByValue []*Card
-
-func (a SortByValue) Len() int      { return len(a) }
-func (a SortByValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a SortByValue) Less(i, j int) bool {
-	if a[i].Value == a[j].Value {
-		return a[i].Face < a[j].Face
-	} else {
-		v1, v2 := a[i].Value, a[j].Value
-		if v1 == 1 {
-			v1 = 14
+		//check straight
+		if !hasStraight && (ck.s>>uint(10-n))&0x1f == 0x1f {
+			hasStraight = true
+			ck.s = n
 		}
-		if v2 == 1 {
-			v2 = 14
-		}
-		return v1 < v2
+
+		n--
 	}
+
+	//check FourOfAKind
+	p31, p32, p21, p22 := 0, 0, 0, 0
+	for i := len(ck.kinds) - 1; i >= 0; i-- {
+		switch ck.kinds[i] {
+		case 4:
+			ck.face = FourOfAKind
+			ck.s = uint16(i + 1)
+			return ck.face
+		case 3:
+			if p31 == 0 {
+				p31 = i + 1
+			} else {
+				p32 = i + 1
+			}
+		case 2:
+			if p21 == 0 {
+				p21 = i + 1
+			} else {
+				p22 = i + 1
+			}
+		}
+	}
+
+	//check fullhouse
+	if p31 > 0 && (p32 > 0 || p21 > 0) {
+		ck.face = FullHouse
+		//ck.s remember the position of 3-cards in higher 4 bits and 2-cards in lower 4 bits
+		if p32 >= 0 {
+			ck.s = uint16(p31)<<8 | uint16(p32)
+		} else {
+			ck.s = uint16(p31)<<8 | uint16(p21)
+		}
+		return ck.face
+	}
+
+	//check flush
+	for i, v := range ck.flushs {
+		if v >= 5 {
+			ck.s = uint16(i) //ck.s remember the face  of flush
+			ck.face = Flush
+			return ck.face
+		}
+	}
+
+	//check straight
+	if hasStraight {
+		ck.face = Straight
+		return ck.face
+	}
+
+	//check three of a kind
+	if p31 > 0 {
+		ck.face = ThreeOfAKind
+		ck.s = uint16(p31)
+		return ck.face
+	}
+
+	//check TwoPairs
+	if p21 > 0 && p22 > 0 {
+		ck.face = TwoPairs
+		ck.s = uint16(p21)<<8 | uint16(p22)
+		return ck.face
+	}
+
+	//check pair
+	if p21 > 0 {
+		ck.face = Pair
+		ck.s = uint16(p21)
+		return ck.face
+	}
+
+	ck.face = HighCard
+	return ck.face
 }
 
-type CardCollection struct {
-	FaceType CardFaceType
-	TopCards [5]*Card
+func (ck *CardsCheck) Top5Cards() []Card {
+	if len(ck.topCards) > 0 {
+		return ck.topCards
+	}
+	if ck.face == CardFaceNone {
+		_ = ck.CardFace()
+	}
+	//return ck.topCards
+	if ck.face == StraightFlush {
+		if ck.s%13 == 10 {
+			ck.topCards = []Card{Card(ck.s), Card(ck.s + 1), Card(ck.s + 2), Card(ck.s + 3), Card(ck.s - 9)}
+		} else {
+			ck.topCards = []Card{Card(ck.s), Card(ck.s + 1), Card(ck.s + 2), Card(ck.s + 3), Card(ck.s + 4)}
+		}
+		return ck.topCards
+	} else if ck.face == FourOfAKind {
+		ck.topCards = []Card{Card(ck.s), Card(ck.s + 13), Card(ck.s + 26), Card(ck.s + 39)}
+	} else if ck.face == FullHouse {
+		h, l := (ck.s&0xff00)>>8, (ck.s & 0x00ff)
+		two := []Card{}
+		for i, p := range ck.s4 {
+			if p&(0x01<<uint16(12-h)) == 0x01 {
+				ck.topCards = append(ck.topCards, Card(int(h)+1+i*13))
+			}
+			if p&(0x01<<uint16(12-l)) == 0x01 {
+				two = append(two, Card(int(l)+1+i*13))
+			}
+		}
+		ck.topCards = append(ck.topCards, two...)
+		return ck.topCards
+	} else if ck.face == Flush {
+		p := ck.s4[ck.s]
+		//Ace is the largest
+		if (p>>13)&0x01 == 0x01 {
+			ck.topCards = append(ck.topCards, Card(ck.s*13+1))
+		}
+		for i := uint16(1); i <= 12; i++ {
+			if (p>>i)&0x01 == 0x01 {
+				ck.topCards = append(ck.topCards, Card(ck.s*13+14-i))
+			}
+			if len(ck.topCards) == 5 {
+				break
+			}
+		}
+	} else if ck.face == Straight {
+		for i := ck.s; i < ck.s+5; i++ {
+			for j, p := range ck.s4 {
+				if p>>(14-i)&0x01 == 0x01 {
+					ck.topCards = append(ck.topCards, Card(j*13+int(i)))
+					break
+				}
+			}
+		}
+	} else if ck.face == ThreeOfAKind {
+		for i, p := range ck.s4 {
+			if p&(0x01<<(12-ck.s)) == 0x01 {
+				ck.topCards = append(ck.topCards, Card(int(ck.s)+1+i*13))
+			}
+		}
+	} else if ck.face == TwoPairs {
+		h, l := int((ck.s&0xff00)>>8), int(ck.s&0x00ff)
+		two := []Card{}
+		for i, p := range ck.s4 {
+			if p&(0x01<<uint16(len(ck.kinds)-1-h)) == 0x01 {
+				ck.topCards = append(ck.topCards, Card(i*13+h+1))
+			}
+			if p&(0x01<<uint16(len(ck.kinds)-1-l)) == 0x01 {
+				two = append(two, Card(i*13+l+1))
+			}
+		}
+		ck.topCards = append(ck.topCards, two...)
+	} else if ck.face == Pair {
+		for i, p := range ck.s4 {
+			if p&(0x01<<uint16(len(ck.kinds)-1-int(ck.s))) == 0x01 {
+				ck.topCards = append(ck.topCards, Card(i*13+int(ck.s)+1))
+			}
+		}
+	}
+
+	//pad rest
+	if len(ck.topCards) < 5 {
+	PAD:
+		for i := len(ck.kinds) - 1; i >= 0; i-- {
+			if ck.kinds[i] == 0 {
+				continue
+			}
+			for j, p := range ck.s4 {
+				if p&(0x01<<uint16(13-i)) == 0x01 {
+					c := Card(j*13 + i%13)
+					exists := false
+					for _, v := range ck.topCards {
+						if v == c {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						ck.topCards = append(ck.topCards, Card(j*13+i%13))
+						if len(ck.topCards) == 5 {
+							break PAD
+						}
+					}
+				}
+			}
+		}
+	}
+	return ck.topCards
 }
 
-func (cc *CardCollection) CmpTo(bb *CardCollection) int {
-	if cc.FaceType != bb.FaceType {
-		if cc.FaceType > bb.FaceType {
+//returns: big 1, equal 0, small -1
+func (ck *CardsCheck) CmpTo(ck2 *CardsCheck) int {
+	//compare face first
+	if ck.CardFace() != ck2.CardFace() {
+		if ck.CardFace() < ck2.CardFace() {
 			return 1
 		} else {
 			return -1
 		}
 	}
-	for i, j := 0, 0; i < len(cc.TopCards) && j < len(bb.TopCards); i, j = i+1, j+1 {
-		if cc.TopCards[i].Value != bb.TopCards[j].Value {
-			if cc.TopCards[i].Value > bb.TopCards[j].Value {
-				return 1
-			} else {
-				return -1
-			}
+
+	//both have the same type. compare top cards
+	t1 := ck.Top5Cards()
+	t2 := ck2.Top5Cards()
+	for i := 0; i < 5; i++ {
+		if t1[i] > t2[i] {
+			return 1
+		} else if t1[i] < t2[i] {
+			return -1
 		}
 	}
 
 	return 0
-}
-
-//insert cards at index i.
-func (cc *CardCollection) insertTopCardsAt(i int, cards ...*Card) {
-	for k, j := len(cc.TopCards)-i-len(cards), len(cc.TopCards)-1; k > 0 && j >= 0; k, j = k-1, j-1 {
-		cc.TopCards[j] = cc.TopCards[i+k-1]
-	}
-	for k := 0; k < len(cards); k++ {
-		cc.TopCards[i+k] = cards[k]
-	}
-}
-
-//pick straight from a sorted cards collection
-//returns a straight or empty slice
-//notice: Ace 2 3 4 5 is also a straight. it's the smallest one.
-func getTopStraight(cards []*Card) []*Card {
-	var straight []*Card
-	for i := 0; i < len(cards)-4; i++ {
-		if cards[i+3].Value-cards[i].Value == 3 && cards[i+2].Value-cards[i].Value == 2 && cards[i+1].Value-cards[i].Value == 1 {
-			if cards[i+4].Value-cards[i].Value == 4 || cards[i+4].Value-cards[i].Value == (1-10) {
-				straight = append([]*Card(nil), cards[i:i+5]...)
-			} else if cards[len(cards)-1].Value == 1 && cards[i].Value == 2 {
-				straight = append([]*Card(nil), cards[len(cards)-1])
-				straight = append(straight, cards[i:i+4]...)
-			}
-		}
-	}
-
-	return straight
-}
-
-func SelectTop5(cards []*Card) *CardCollection {
-	cc := &CardCollection{
-		FaceType: HighCard,
-	}
-
-	//check if straight exists
-	sort.Sort(SortByValue(cards))
-	straight := getTopStraight(cards)
-	if len(straight) == 5 {
-		cc.FaceType = Straight
-		cc.insertTopCardsAt(0, straight...)
-	}
-
-	valueCounter := make(map[CardValue]int)
-	faceCounter := make(map[CardFace]int)
-	for i, v := range cards {
-		valueCounter[v.Value] += 1
-		faceCounter[v.Face] += 1
-
-		if valueCounter[v.Value] == 4 && cc.FaceType < FourOfAKind {
-			cc.FaceType = FourOfAKind
-			cc.insertTopCardsAt(3, cards[i])
-			break
-		} else if valueCounter[v.Value] == 3 {
-			if cc.FaceType == TwoPairs {
-				cc.FaceType = FullHouse
-				cc.insertTopCardsAt(2, cards[i])
-			} else if cc.FaceType == Pair {
-				cc.FaceType = ThreeOfAKind
-				cc.insertTopCardsAt(2, cards[i])
-			}
-		} else if valueCounter[v.Value] == 2 {
-			if cc.FaceType == ThreeOfAKind {
-				cc.FaceType = FullHouse
-				cc.insertTopCardsAt(3, cards[i-1:i+1]...)
-			} else if cc.FaceType == Pair {
-				cc.FaceType = TwoPairs
-				cc.insertTopCardsAt(0, cards[i-1:i+1]...)
-			}
-			if cc.FaceType < Pair {
-				cc.FaceType = Pair
-				cc.insertTopCardsAt(0, cards[i-1:i+1]...)
-			}
-		}
-	}
-
-	//beacuse we sort cards by their value previously.
-	//so we need check if there'are flush straight or flush exists next
-FLUSHCHECK:
-	for k, v := range faceCounter {
-		if v >= 5 {
-			sort.Sort(SortByFaceAndValue(cards))
-			for i := 0; i < len(cards); i++ {
-				if cards[i].Face == k {
-					straight = getTopStraight(cards[i : i+v])
-					if len(straight) == 5 {
-						//同花顺
-						cc.FaceType = StraightFlush
-						cc.insertTopCardsAt(0, straight...)
-						if straight[4].Value == 1 {
-							cc.FaceType = RoyalFlush
-						}
-					} else {
-						if cc.FaceType < Flush {
-							cc.FaceType = Flush
-							//同花
-							cc.insertTopCardsAt(0, cards[i+v-5:i+v]...)
-						}
-					}
-					break FLUSHCHECK
-				}
-			}
-		}
-	}
-
-	//pad nil pos
-	for i := 0; i < len(cc.TopCards); i++ {
-		if cc.TopCards[i] != nil {
-			continue
-		}
-		for j := len(cards) - 1; j >= 0; j-- {
-			included := false
-			for k := len(cc.TopCards) - 1; k >= 0; k-- {
-				if cc.TopCards[k] == cards[j] {
-					included = true
-					break
-				}
-			}
-			if !included {
-				cc.TopCards[i] = cards[j]
-				break
-			}
-		}
-	}
-
-	return cc
 }

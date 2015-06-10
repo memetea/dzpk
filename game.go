@@ -73,19 +73,19 @@ func (g *Game) acceptClient(name string, conn net.Conn) bool {
 
 //新的一局游戏开始， 每人发两张牌
 func (g *Game) onGameStart() {
-	g.ShuffledCards = genRandCards()
-	for i := 0; i < len(g.Players); i++ {
-		p := g.Players[(g.Dealer+i)%len(g.Players)]
-		var holecards []*Card
-		holecards = append(holecards, g.ShuffledCards[i])
-		holecards = append(holecards, g.ShuffledCards[i+len(g.Players)])
-		err := p.SendHoleCard(holecards)
-		if err != nil {
-			syslog.Error("Sendcard err:%v", err)
-			continue
-		}
-	}
-	g.ShuffledCards = g.ShuffledCards[2*len(g.Players):]
+	// g.ShuffledCards = genRandCards()
+	// for i := 0; i < len(g.Players); i++ {
+	// 	p := g.Players[(g.Dealer+i)%len(g.Players)]
+	// 	var holecards []*Card
+	// 	holecards = append(holecards, g.ShuffledCards[i])
+	// 	holecards = append(holecards, g.ShuffledCards[i+len(g.Players)])
+	// 	err := p.SendHoleCard(holecards)
+	// 	if err != nil {
+	// 		syslog.Error("Sendcard err:%v", err)
+	// 		continue
+	// 	}
+	// }
+	// g.ShuffledCards = g.ShuffledCards[2*len(g.Players):]
 }
 
 func (g *Game) onGameOver() {
