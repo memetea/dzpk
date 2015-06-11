@@ -16,7 +16,7 @@ func main() {
 		var cc dzpk.CardCollection
 		n := 7
 		for n > 0 {
-			randK := dzpk.Card(rand.Int31n(52) + 1)
+			randK := dzpk.Card(rand.Int31n(52))
 			if cc.CardExists(randK) {
 				continue
 			}

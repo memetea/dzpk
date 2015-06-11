@@ -5,14 +5,29 @@ import (
 	"testing"
 )
 
-func TestGenCards(t *testing.T) {
+func TestCardCollection(t *testing.T) {
 	cards := genNCards(7)
-	t.Logf("len:%d, cards:%v", len(cards), cards)
-	var cc CardCollection
-	for _, c := range cards {
-		cc.SetCard(c)
+	if len(cards) != 7 {
+		t.Logf("Expect 7 random cards. got:%d", len(cards))
+		t.FailNow()
 	}
-	t.Logf("%s", strconv.FormatUint(uint64(cc), 2))
+
+	var cc CardCollection
+	cards = []Card{}
+	for _, v := range []string{"S8", "D7", "SQ", "S9", "SJ", "S10", "S3"} {
+		c, err := parseCard(v)
+		if err != nil {
+			t.Logf("parseCard:%v err:%v", v, err)
+			t.FailNow()
+		}
+		cc.SetCard(c)
+		cards = append(cards, c)
+	}
+
+	if "100001111100000000000000000000000000000000000000000010000000" != strconv.FormatUint(uint64(cc), 2) {
+		t.Logf("expect:100001111100000000000000000000000000000000000000000010000000\n      :%v", strconv.FormatUint(uint64(cc), 2))
+		t.FailNow()
+	}
 	for _, c := range cards {
 		if !cc.CardExists(c) {
 			t.Logf("card %d expect to exist in cardcollection", c)
@@ -56,6 +71,7 @@ func TestSelectTop5(t *testing.T) {
 		[]string{"SQ", "D10", "C8", "H7", "C5"},
 	}
 
+	var cks []*CardsCheck
 	for i := 0; i < len(cards); i++ {
 		var cc []Card
 		for j := 0; j < len(cards[i]); j++ {
@@ -67,6 +83,7 @@ func TestSelectTop5(t *testing.T) {
 			cc = append(cc, c)
 		}
 		ck := NewCardsCheck(cc)
+		cks = append(cks, ck)
 		if ck.CardFace() != expectFace[i] {
 			t.Logf("Expect face:%v. got:%v", expectFace[i], ck.CardFace())
 			t.FailNow()
@@ -77,5 +94,29 @@ func TestSelectTop5(t *testing.T) {
 				t.FailNow()
 			}
 		}
+
+		for j, v := range ck.TopCards() {
+			if expectCards[i][j] != v.String() {
+				t.Logf("top5 expect:%v, got:%v", expectCards[i], ck.Top5Cards())
+				t.FailNow()
+			}
+		}
+	}
+
+	for i := 0; i < len(cks); i++ {
+		for j := i + 1; j < len(cks); j++ {
+			if cks[i].CmpTo(cks[j]) != 1 {
+				t.Logf("Card Compare failed: %d, %d, %d", i, j, cks[i].CmpTo(cks[j]))
+				t.FailNow()
+			}
+		}
+	}
+}
+
+func BenchmarkAddCmpTo(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ck1 := NewCardsCheck(genNCards(7))
+		ck2 := NewCardsCheck(genNCards(7))
+		_ = ck1.CmpTo(ck2)
 	}
 }
